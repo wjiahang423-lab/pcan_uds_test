@@ -2,6 +2,11 @@
 # config.py  ——  PCAN UDS 诊断测试工程全局配置
 # ============================================================
 
+import os
+
+# ---- 测试用例 Excel 数据源 ----
+EXCEL_PATH = os.path.join(os.path.dirname(__file__), 'UDS_TestCases_Template.xlsx')
+
 # ---- PCAN 硬件 ----
 PCAN_CHANNEL = 'PCAN_USBBUS1'   # Peak PCAN USB 通道
 PCAN_BITRATE = 500000            # CAN 波特率 (bps)
@@ -39,27 +44,6 @@ DID_ECU_HW_VERSION  = 0xF193
 DID_FINGERPRINT     = 0xF15A
 DID_ECU_SERIAL_NUM  = 0xF18C
 DID_SUPPLIER_ID     = 0xF18A
-
-# RDBI 测试用例：DID -> 期望最小数据长度（字节）
-# 若 expected_raw 不为 None，则同时比对原始字节内容
-RDBI_TEST_CASES = [
-    {'name': 'VIN',            'did': DID_VIN,            'min_len': 17, 'expected_raw': None},
-    {'name': 'SW_Version',     'did': DID_ECU_SW_VERSION, 'min_len': 1,  'expected_raw': None},
-    {'name': 'HW_Version',     'did': DID_ECU_HW_VERSION, 'min_len': 1,  'expected_raw': None},
-    {'name': 'ECU_SerialNum',  'did': DID_ECU_SERIAL_NUM, 'min_len': 4,  'expected_raw': None},
-]
-
-# ---- RoutineControl 测试用例 ----
-# routine_id -> {'name', 'session', 'start_data', 'expect_result_len'}
-ROUTINE_TEST_CASES = [
-    {
-        'name':              'CheckProgrammingDependencies',
-        'routine_id':        0xFF01,
-        'session':           'extended',
-        'start_data':        b'',
-        'expect_result_len': 0,   # 0 = 不验证结果长度
-    },
-]
 
 # ---- DTC 状态掩码 ----
 DTC_STATUS_MASK_ALL = 0xFF

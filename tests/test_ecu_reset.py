@@ -1,26 +1,30 @@
 # ============================================================
 # tests/test_ecu_reset.py  ——  ECUReset (SID 0x11)
-#
-# 测试项：
-#   1. HardReset (0x01)            → 正响应 + ECU 重启后重新上线
-#   2. SoftReset (0x03)            → 正响应（KeyOffOnReset/SoftReset）
-#   3. 无效复位类型                 → NRC 0x12
-#
-# 注意：HardReset 后需等待 ECU 重启完成（ECU_REBOOT_WAIT_S），
-#       然后重新发送 TesterPresent 或 DefaultSession 确认在线。
+# 数据来源：UDS_TestCases_Template.xlsx → ECUReset sheet
 # ============================================================
 
+import re
 import time
 import pytest
-from udsoncan import services
 from udsoncan.exceptions import NegativeResponseException, TimeoutException
 
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-ECU_REBOOT_WAIT_S = 5.0  # ECU 硬复位后等待时间（按实际 ECU 启动时间调整）
+from utils.excel_reader import load_ecu_reset_cases
 
 pytestmark = pytest.mark.ecu_reset
+
+_ALL_CASES = load_ecu_reset_cases()
+
+_DEFAULT_REBOOT_WAIT = 5.0   # 默认硬复位等待秒数
+_DEFAULT_SOFT_WAIT   = 2.0   # 默认软复位等待秒数
+
+
+def _parse_wait_seconds(note: str, default: float) -> float:
+    """从 note 字段中提取等待秒数，如 '等待 5s' → 5.0，未找到则返回 default。"""
+    m = re.search(r'(\d+(?:\.\d+)?)\s*s', note)
+    return float(m.group(1)) if m else default
 
 
 def _wait_ecu_online(uds_client, timeout: float = 10.0) -> bool:
@@ -35,55 +39,41 @@ def _wait_ecu_online(uds_client, timeout: float = 10.0) -> bool:
     return False
 
 
-def test_hard_reset(uds_client):
-    """
-    HardReset：ECU 应答后断电重启，等待重新上线后确认正常工作。
-    """
-    try:
-        response = uds_client.ecu_reset(services.ECUReset.ResetType.hardReset)
-    except NegativeResponseException as e:
-        pytest.fail(f"HardReset NRC 0x{e.response.code:02X} ({e.response.code_name})")
-    except TimeoutException:
-        pytest.fail("HardReset 无响应（超时）")
+@pytest.mark.parametrize('case', _ALL_CASES, ids=[c['id'] for c in _ALL_CASES])
+def test_ecu_reset(case, uds_client):
+    """统一参数化 ECU 复位测试，正/负响应由 expected 字段控制。"""
+    reset_type   = case['reset_type']
+    name         = case['name']
+    expected     = case['expected']
+    expected_nrc = case['nrc']
+    note         = case['note']
 
-    assert response.positive, "HardReset 响应标志为非正响应"
+    if expected == 'Positive':
+        try:
+            response = uds_client.ecu_reset(reset_type)
+        except NegativeResponseException as e:
+            pytest.fail(f"[{name}] 期望正响应，收到 NRC 0x{e.response.code:02X} ({e.response.code_name})")
+        except TimeoutException:
+            pytest.fail(f"[{name}] ECU 无响应（超时）")
 
-    # 等待 ECU 重启
-    time.sleep(ECU_REBOOT_WAIT_S)
+        assert response.positive, f"[{name}] 响应标志为非正响应"
 
-    # 确认 ECU 重新上线
-    assert _wait_ecu_online(uds_client), (
-        f"HardReset 后 ECU 在 {ECU_REBOOT_WAIT_S + 10.0:.0f}s 内未重新上线"
-    )
-
-
-def test_soft_reset(uds_client):
-    """
-    SoftReset：ECU 应答后执行软复位，复位完成后 ECU 保持在线。
-    """
-    try:
-        response = uds_client.ecu_reset(services.ECUReset.ResetType.softReset)
-    except NegativeResponseException as e:
-        pytest.fail(f"SoftReset NRC 0x{e.response.code:02X} ({e.response.code_name})")
-    except TimeoutException:
-        pytest.fail("SoftReset 无响应（超时）")
-
-    assert response.positive, "SoftReset 响应标志为非正响应"
-
-    time.sleep(2.0)
-    assert _wait_ecu_online(uds_client), "SoftReset 后 ECU 未在 12s 内重新上线"
-
-
-@pytest.mark.negative
-def test_reset_invalid_type(uds_client):
-    """无效复位类型（0x7F）应收到 NRC 0x12 (subFunctionNotSupported)。"""
-    INVALID_RESET = 0x7F
-    try:
-        uds_client.ecu_reset(INVALID_RESET)
-        pytest.fail("期望 NRC，但收到了正响应")
-    except NegativeResponseException as e:
-        assert e.response.code in (0x12, 0x31), (
-            f"期望 NRC 0x12 或 0x31，实际 0x{e.response.code:02X}"
+        # 根据 note 提取等待时间后轮询上线
+        wait_s = _parse_wait_seconds(note, _DEFAULT_REBOOT_WAIT)
+        time.sleep(wait_s)
+        assert _wait_ecu_online(uds_client), (
+            f"[{name}] 复位后 ECU 在 {wait_s + 10:.0f}s 内未重新上线"
         )
-    except TimeoutException:
-        pytest.fail("ECU 无响应（超时）")
+
+    else:  # Negative
+        try:
+            uds_client.ecu_reset(reset_type)
+            pytest.fail(f"[{name}] 期望 NRC，但收到了正响应")
+        except NegativeResponseException as e:
+            if expected_nrc:
+                assert e.response.code in expected_nrc, (
+                    f"[{name}] 期望 NRC {[hex(n) for n in expected_nrc]}，"
+                    f"实际 0x{e.response.code:02X} ({e.response.code_name})"
+                )
+        except TimeoutException:
+            pytest.fail(f"[{name}] ECU 无响应（超时）")

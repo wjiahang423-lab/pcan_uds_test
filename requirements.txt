@@ -4,3 +4,4 @@ pytest-order>=1.1
 python-can>=4.3
 can-isotp>=2.0
 udsoncan>=1.17
+openpyxl>=3.1

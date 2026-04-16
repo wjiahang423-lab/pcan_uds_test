@@ -5,7 +5,7 @@
 import time
 import threading
 import pytest
-import udsoncan
+from udsoncan.client import Client as UdsClient
 from udsoncan import services
 from udsoncan.exceptions import NegativeResponseException, TimeoutException
 
@@ -69,7 +69,7 @@ def uds_client():
 class _TesterPresentKeepAlive:
     """后台线程，每隔 interval 秒发送一次 TesterPresent(suppressPosRspMsgIndicationBit)。"""
 
-    def __init__(self, client: udsoncan.Client, interval: float):
+    def __init__(self, client: UdsClient, interval: float):
         self._client   = client
         self._interval = interval
         self._stop_evt = threading.Event()

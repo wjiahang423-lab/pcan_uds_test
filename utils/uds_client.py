@@ -12,7 +12,8 @@
 import threading
 import can
 import isotp
-import udsoncan
+from udsoncan.client import Client
+from udsoncan import configs as uds_configs
 from udsoncan.connections import PythonIsoTpConnection
 
 from utils.seed_key import security_algo_v1
@@ -27,7 +28,7 @@ def build_uds_client(
     p2_star_timeout: float = 10.0,
     request_timeout: float = 5.0,
     isotp_params: dict = None,
-) -> udsoncan.Client:
+) -> Client:
     """
     创建并返回一个已连接的 udsoncan.Client。
 
@@ -74,7 +75,7 @@ def build_uds_client(
     conn = PythonIsoTpConnection(stack)
 
     # 4. UDS 客户端配置
-    uds_config = udsoncan.configs.default_client_config.copy()
+    uds_config = uds_configs.default_client_config.copy()
     uds_config.update({
         'request_timeout':  request_timeout,
         'p2_timeout':       p2_timeout,
@@ -84,7 +85,7 @@ def build_uds_client(
         'standard_version': 2020,  # ISO 14229-1:2020
     })
 
-    client = udsoncan.Client(conn, config=uds_config)
+    client = Client(conn, config=uds_config)
 
     # 保存底层对象引用，便于 conftest 清理
     client._pcan_bus      = bus
@@ -93,7 +94,7 @@ def build_uds_client(
     return client
 
 
-def close_uds_client(client: udsoncan.Client) -> None:
+def close_uds_client(client: Client) -> None:
     """完整释放 UDS 客户端及底层 CAN 资源。"""
     try:
         client.close()
